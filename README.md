@@ -52,39 +52,29 @@ Use this code for your dashboard:
 ```yaml
 type: custom:mushroom-template-card
 primary: >-
-  {% from 'easy_time.jinja' import custom_time, custom_relative_time,
-  custom_time_between %}
-
+  {% from 'easy_time.jinja' import custom_time, custom_relative_time, custom_time_between %}
   {% if not is_state_attr(entity, 'next_start', 'unknown') %}
-
-  {% if (state_attr(entity, 'next_start') | as_timestamp > now() |
-  as_timestamp) and (state_attr(entity, 'next_end') is not none) %}
-
-  In {{ custom_time(state_attr(entity, 'next_start'), 'hour, minute', 'de')
-  }} regnet es für {{ state_attr(entity, 'next_length') }} Minuten.
-
-  {% elif (state_attr(entity, 'next_start') | as_timestamp > now() |
-  as_timestamp) %}
-
-  In {{ custom_time(state_attr(entity, 'next_start'), 'hour, minute', 'de')
-  }} beginnt es zu regnen.
-
-  {% elif (state_attr(entity, 'next_end') is not none) %}
-
-  Es regnet noch für {{ custom_time_between(now() | as_timestamp,
-  state_attr(entity, 'next_end') | as_timestamp, 'hour, minute', None, None,
-  'de') }}.
-
+    {% set next_start = state_attr(entity, 'next_start') %}
+    {% set next_end = state_attr(entity, 'next_end') %}
+    {% if next_start is not none and next_end is not none %}
+      {% if next_start | as_timestamp > now() | as_timestamp %}
+        In {{ custom_time(next_start, 'hour, minute', 'de') }} regnet es für {{ state_attr(entity, 'next_length') }} Minuten.
+      {% elif next_end is not none %}
+        Es regnet noch für {{ custom_time_between(now() | as_timestamp, next_end | as_timestamp, 'hour, minute', None, None, 'de') }}.
+      {% else %}
+        Es regnet noch mindestens 2 Stunden lang.
+      {% endif %}
+    {% elif next_start is not none %}
+      {% if next_start | as_timestamp > now() | as_timestamp %}
+        In {{ custom_time(next_start, 'hour, minute', 'de') }} beginnt es zu regnen.
+      {% else %}
+        Es regnet noch mindestens 2 Stunden lang.
+      {% endif %}
+    {% else %}
+      Kein Regen in den nächsten 2 Stunden.
+    {% endif %}
   {% else %}
-
-  Es regnet noch mindestens 2 Stunden lang.
-
-  {% endif %}
-
-  {% else %}
-
-  Kein Regen in den nächsten 2 Stunden.
-
+    Kein Regen in den nächsten 2 Stunden.
   {% endif %}
 icon: mdi:weather-rainy
 icon_color: |-
