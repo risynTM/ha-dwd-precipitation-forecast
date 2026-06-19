@@ -1,13 +1,15 @@
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
+import logging
 import math
 import tarfile
 
 import numpy as np
 import requests
-import logging
 
 API_URL = "https://opendata.dwd.de/weather/radar/composite/rv/DE1200_RV_LATEST.tar.bz2"
+
+REQUEST_TIMEOUT = 30
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,14 +29,29 @@ class DWDRadar:
         self.ysize = 1200
 
     def get_radars(self):
-        _LOGGER.info("get radars")
-        radars = {}
-        r = requests.get(API_URL)
-        _LOGGER.info(r)
-        tar = tarfile.open(fileobj=BytesIO(r.content))
-        _LOGGER.info(tar)
+        _LOGGER.debug("Fetching radar data from DWD")
 
-        for tarmember in tar.getmembers():
+        try:
+            r = requests.get(API_URL, timeout=REQUEST_TIMEOUT)
+            r.raise_for_status()
+        except requests.RequestException as err:
+            raise RadarNotAvailableError(
+                f"Failed to fetch radar data from DWD: {err}"
+            ) from err
+
+        try:
+            tar = tarfile.open(fileobj=BytesIO(r.content))
+            members = tar.getmembers()
+        except tarfile.TarError as err:
+            raise RadarNotAvailableError(
+                f"Failed to read radar archive from DWD: {err}"
+            ) from err
+
+        if not members:
+            raise RadarNotAvailableError("DWD radar archive contained no data")
+
+        radars = {}
+        for tarmember in members:
             radar_minute_delta = int(tarmember.name[-3:])
             radar_time = datetime.strptime(
                 tarmember.name[-14:-4], "%y%m%d%H%M"
@@ -45,11 +62,10 @@ class DWDRadar:
                 self.ysize, self.xsize
             )
         self.radars = radars
-        _LOGGER.info("got radars")
+        _LOGGER.debug("Fetched %d radar frames from DWD", len(radars))
 
-    def get_location_index(self, x, y):
-        if self.radars is None:
-            raise RadarNotAvailableError
+    def _project(self, x, y):
+        """Project a location (x=latitude, y=longitude) onto radar grid indices."""
         x_cart = int(
             6370.04
             * (1 + math.sin(60 / 180 * math.pi))
@@ -66,6 +82,21 @@ class DWDRadar:
             * math.cos((y - 10) / 180 * math.pi)
             + 4808.645
         )
+        return (x_cart, y_cart)
+
+    def is_in_area(self, x, y) -> bool:
+        """Whether a location falls within the radar grid.
+
+        Depends only on the projection and the fixed grid dimensions, so it can
+        validate a location without downloading any radar data.
+        """
+        x_cart, y_cart = self._project(x, y)
+        return 0 <= y_cart < self.ysize and 0 <= x_cart < self.xsize
+
+    def get_location_index(self, x, y):
+        if self.radars is None:
+            raise RadarNotAvailableError
+        x_cart, y_cart = self._project(x, y)
         if not (0 <= y_cart < self.ysize) or not (0 <= x_cart < self.xsize):
             raise NotInAreaError
         return (x_cart, y_cart)
@@ -89,16 +120,9 @@ class DWDRadar:
         precipitation_values = self.get_precipitation_values(x, y)
         return np.interp(
             search_time.timestamp(),
-            [x.timestamp() for x in precipitation_values],
+            [t.timestamp() for t in precipitation_values],
             list(precipitation_values.values()),
         )
-        current_value = None
-        for radar_time, precipitation in precipitation_values.items():
-            if radar_time <= datetime.now(UTC):
-                current_value = precipitation
-            else:
-                break
-        return current_value
 
     def get_next_precipitation(self, x, y):
         rain_start = None
