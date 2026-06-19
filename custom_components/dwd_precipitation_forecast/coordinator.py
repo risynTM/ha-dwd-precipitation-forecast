@@ -35,18 +35,9 @@ class DwdPrecipitationForecastCoordinator(DataUpdateCoordinator):
         await super().async_config_entry_first_refresh()
 
     async def _async_update_data(self):
-        """Fetch data from API endpoint.
-
-        This is the place to pre-process the data to lookup tables
-        so entities can quickly look up their data.
-        """
+        """Fetch the latest radar data from the DWD open-data API."""
         try:
-            # Note: asyncio.TimeoutError and aiohttp.ClientError are already
-            # handled by the data update coordinator.
             async with async_timeout.timeout(60):
-                # Grab active context variables to limit data required to be fetched from API
-                # Note: using context is not required if there is no need or ability to limit
-                # data retrieved from API.
                 return await self.hass.async_add_executor_job(self.api.get_radars)
         except Exception as err:
-            raise UpdateFailed(f"This Error communicating with API: {err}")
+            raise UpdateFailed(f"Error communicating with DWD API: {err}") from err

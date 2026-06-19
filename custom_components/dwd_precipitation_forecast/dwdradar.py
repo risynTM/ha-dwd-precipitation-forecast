@@ -1,13 +1,15 @@
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
+import logging
 import math
 import tarfile
 
 import numpy as np
 import requests
-import logging
 
 API_URL = "https://opendata.dwd.de/weather/radar/composite/rv/DE1200_RV_LATEST.tar.bz2"
+
+REQUEST_TIMEOUT = 30
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,14 +29,29 @@ class DWDRadar:
         self.ysize = 1200
 
     def get_radars(self):
-        _LOGGER.info("get radars")
-        radars = {}
-        r = requests.get(API_URL)
-        _LOGGER.info(r)
-        tar = tarfile.open(fileobj=BytesIO(r.content))
-        _LOGGER.info(tar)
+        _LOGGER.debug("Fetching radar data from DWD")
 
-        for tarmember in tar.getmembers():
+        try:
+            r = requests.get(API_URL, timeout=REQUEST_TIMEOUT)
+            r.raise_for_status()
+        except requests.RequestException as err:
+            raise RadarNotAvailableError(
+                f"Failed to fetch radar data from DWD: {err}"
+            ) from err
+
+        try:
+            tar = tarfile.open(fileobj=BytesIO(r.content))
+            members = tar.getmembers()
+        except tarfile.TarError as err:
+            raise RadarNotAvailableError(
+                f"Failed to read radar archive from DWD: {err}"
+            ) from err
+
+        if not members:
+            raise RadarNotAvailableError("DWD radar archive contained no data")
+
+        radars = {}
+        for tarmember in members:
             radar_minute_delta = int(tarmember.name[-3:])
             radar_time = datetime.strptime(
                 tarmember.name[-14:-4], "%y%m%d%H%M"
@@ -45,7 +62,7 @@ class DWDRadar:
                 self.ysize, self.xsize
             )
         self.radars = radars
-        _LOGGER.info("got radars")
+        _LOGGER.debug("Fetched %d radar frames from DWD", len(radars))
 
     def _project(self, x, y):
         """Project a location (x=latitude, y=longitude) onto radar grid indices."""
