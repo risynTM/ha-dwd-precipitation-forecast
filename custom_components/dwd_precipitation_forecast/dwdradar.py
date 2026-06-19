@@ -47,9 +47,8 @@ class DWDRadar:
         self.radars = radars
         _LOGGER.info("got radars")
 
-    def get_location_index(self, x, y):
-        if self.radars is None:
-            raise RadarNotAvailableError
+    def _project(self, x, y):
+        """Project a location (x=latitude, y=longitude) onto radar grid indices."""
         x_cart = int(
             6370.04
             * (1 + math.sin(60 / 180 * math.pi))
@@ -66,6 +65,12 @@ class DWDRadar:
             * math.cos((y - 10) / 180 * math.pi)
             + 4808.645
         )
+        return (x_cart, y_cart)
+
+    def get_location_index(self, x, y):
+        if self.radars is None:
+            raise RadarNotAvailableError
+        x_cart, y_cart = self._project(x, y)
         if not (0 <= y_cart < self.ysize) or not (0 <= x_cart < self.xsize):
             raise NotInAreaError
         return (x_cart, y_cart)
@@ -89,16 +94,9 @@ class DWDRadar:
         precipitation_values = self.get_precipitation_values(x, y)
         return np.interp(
             search_time.timestamp(),
-            [x.timestamp() for x in precipitation_values],
+            [t.timestamp() for t in precipitation_values],
             list(precipitation_values.values()),
         )
-        current_value = None
-        for radar_time, precipitation in precipitation_values.items():
-            if radar_time <= datetime.now(UTC):
-                current_value = precipitation
-            else:
-                break
-        return current_value
 
     def get_next_precipitation(self, x, y):
         rain_start = None
