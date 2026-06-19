@@ -10,6 +10,10 @@
           "longitude": "Longitude"
         }
       }
+    },
+    "error": {
+      "not_in_area": "The selected location is outside the DWD radar coverage area (Germany and the surrounding region).",
+      "unknown": "Unexpected error"
     }
   }
 }

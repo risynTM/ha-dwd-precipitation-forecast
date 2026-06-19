@@ -84,6 +84,15 @@ class DWDRadar:
         )
         return (x_cart, y_cart)
 
+    def is_in_area(self, x, y) -> bool:
+        """Whether a location falls within the radar grid.
+
+        Depends only on the projection and the fixed grid dimensions, so it can
+        validate a location without downloading any radar data.
+        """
+        x_cart, y_cart = self._project(x, y)
+        return 0 <= y_cart < self.ysize and 0 <= x_cart < self.xsize
+
     def get_location_index(self, x, y):
         if self.radars is None:
             raise RadarNotAvailableError

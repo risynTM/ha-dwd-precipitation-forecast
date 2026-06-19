@@ -13,28 +13,21 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.const import CONF_LATITUDE, CONF_LONGITUDE
 
 from .const import DOMAIN
+from .dwdradar import DWDRadar
 
 _LOGGER = logging.getLogger(__name__)
 
+
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input allows us to connect.
+    """Validate that the chosen location can be used.
 
-    Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
+    The DWD radar product only covers Germany and the immediately surrounding
+    region, so reject locations outside the radar grid. This check is pure
+    geometry and needs no network access.
     """
-    # TODO validate the data can be used to set up a connection.
+    if not DWDRadar().is_in_area(data[CONF_LATITUDE], data[CONF_LONGITUDE]):
+        raise NotInArea
 
-    # If your PyPI package is not built with async, pass your methods
-    # to the executor:
-    # await hass.async_add_executor_job(
-    #     your_validate_func, data[CONF_USERNAME], data[CONF_PASSWORD]
-    # )
-
-    # If you cannot connect:
-    # throw CannotConnect
-    # If the authentication is wrong:
-    # InvalidAuth
-
-    # Return info that you want to store in the config entry.
     return {"title": data["name"]}
 
 
@@ -51,6 +44,8 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 info = await validate_input(self.hass, user_input)
+            except NotInArea:
+                errors["base"] = "not_in_area"
             except Exception:
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -68,9 +63,5 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
 
-class CannotConnect(HomeAssistantError):
-    """Error to indicate we cannot connect."""
-
-
-class InvalidAuth(HomeAssistantError):
-    """Error to indicate there is invalid auth."""
+class NotInArea(HomeAssistantError):
+    """Error to indicate the location is outside the DWD radar coverage area."""

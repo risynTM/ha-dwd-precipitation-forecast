@@ -10,6 +10,10 @@
           "longitude": "Längengrad"
         }
       }
+    },
+    "error": {
+      "not_in_area": "Der gewählte Ort liegt außerhalb des DWD-Radarabdeckungsbereichs (Deutschland und Umgebung).",
+      "unknown": "Unerwarteter Fehler"
     }
   }
 }
